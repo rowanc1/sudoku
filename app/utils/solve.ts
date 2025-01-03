@@ -4,6 +4,10 @@
  * 2) Backtracking for remaining cells after logic is exhausted
  ************************************************************/
 
+import { applyNakedTriples } from './nakedTriples';
+import { SudokuSnapshot } from './types';
+import { deepCloneBoard, deepCloneCandidates } from './utils';
+
 /** 9x9 Sudoku Constants */
 const BOARD_SIZE = 9;
 const BOX_SIZE = 3;
@@ -14,23 +18,31 @@ const BOX_SIZE = 3;
  * @param board A 9x9 Sudoku board; 0 represents an empty cell.
  * @returns True if solved, false if no solution.
  */
-export function solveSudoku(board: number[][]): boolean {
+export function solveSudoku(board: number[][]): SudokuSnapshot[] {
   // Build initial candidates
   const candidates = buildCandidates(board);
+  const snapshots: SudokuSnapshot[] = [
+    {
+      board: deepCloneBoard(board),
+      candidates: deepCloneCandidates(candidates),
+      message: 'Initial Puzzle',
+    },
+  ];
 
   // Repeatedly apply logical strategies (naked/hidden singles, naked pairs, etc.)
   console.time('logical');
-  applyLogicalStrategies(board, candidates);
+  applyLogicalStrategies(board, candidates, snapshots);
   console.timeEnd('logical');
 
   // If still not solved, do backtracking
   if (!isComplete(board)) {
     console.log('Backtracking');
     console.table(board);
-    return backtrack(board, candidates);
+    backtrack(board, candidates);
+    return snapshots;
   }
 
-  return true;
+  return snapshots;
 }
 
 /** Check if the Sudoku is completely filled */
@@ -55,7 +67,7 @@ function isComplete(board: number[][]): boolean {
  * If the cell is empty (0), it starts with {1..9} minus
  * digits that are already present in its row/column/box.
  */
-function buildCandidates(board: number[][]): Set<number>[][] {
+export function buildCandidates(board: number[][]): Set<number>[][] {
   // Initialize all possibilities [1..9] for empty cells
   const candidates: Set<number>[][] = Array.from({ length: BOARD_SIZE }, () =>
     Array.from({ length: BOARD_SIZE }, () => new Set<number>([1, 2, 3, 4, 5, 6, 7, 8, 9]))
@@ -116,18 +128,22 @@ function eliminateFromPeers(
  * 2) LOGICAL STRATEGIES WRAPPER
  ***********************************************************/
 
-function applyLogicalStrategies(board: number[][], candidates: Set<number>[][]): void {
+function applyLogicalStrategies(
+  board: number[][],
+  candidates: Set<number>[][],
+  snapshots: SudokuSnapshot[]
+): void {
   let changed = true;
   while (changed) {
     changed = false;
     // Naked Singles
-    if (applyNakedSingles(board, candidates)) changed = true;
-
+    if (!changed && applyNakedSingles(board, candidates, snapshots)) changed = true;
     // Hidden Singles (rows, columns, boxes)
-    if (applyHiddenSingles(board, candidates)) changed = true;
-
+    if (!changed && applyHiddenSingles(board, candidates, snapshots)) changed = true;
     // // Naked Pairs (rows, columns, boxes)
-    if (applyNakedPairs(board, candidates)) changed = true;
+    if (!changed && applyNakedPairs(board, candidates, snapshots)) changed = true;
+    // // Naked Triples (rows, columns, boxes)
+    if (!changed && applyNakedTriples(board, candidates, snapshots)) changed = true;
   }
 }
 
@@ -138,7 +154,11 @@ function applyLogicalStrategies(board: number[][], candidates: Set<number>[][]):
 /**
  * If a cell has exactly 1 candidate, fill it immediately.
  */
-function applyNakedSingles(board: number[][], candidates: Set<number>[][]): boolean {
+function applyNakedSingles(
+  board: number[][],
+  candidates: Set<number>[][],
+  snapshots: SudokuSnapshot[]
+): boolean {
   let changed = false;
   for (let row = 0; row < BOARD_SIZE; row++) {
     for (let col = 0; col < BOARD_SIZE; col++) {
@@ -146,11 +166,17 @@ function applyNakedSingles(board: number[][], candidates: Set<number>[][]): bool
         const digit = [...candidates[row][col]][0];
         board[row][col] = digit;
         eliminateFromPeers(board, candidates, row, col, digit);
+        // Record a snapshot
+        snapshots.push({
+          board: deepCloneBoard(board),
+          candidates: deepCloneCandidates(candidates),
+          message: `Naked Single at R${row}C${col} = ${digit}`,
+          highlight: { blocks: [[row, col]] },
+        });
         changed = true;
       }
     }
   }
-  if (changed) return applyNakedSingles(board, candidates);
   return changed;
 }
 
@@ -161,16 +187,24 @@ function applyNakedSingles(board: number[][], candidates: Set<number>[][]): bool
 /**
  * Apply Hidden Singles in rows, columns, and boxes.
  */
-function applyHiddenSingles(board: number[][], candidates: Set<number>[][]): boolean {
+function applyHiddenSingles(
+  board: number[][],
+  candidates: Set<number>[][],
+  snapshots: SudokuSnapshot[]
+): boolean {
   let changed = false;
-  if (applyHiddenSinglesInRows(board, candidates)) changed = true;
-  if (applyHiddenSinglesInColumns(board, candidates)) changed = true;
-  if (applyHiddenSinglesInBoxes(board, candidates)) changed = true;
+  if (applyHiddenSinglesInRows(board, candidates, snapshots)) changed = true;
+  if (applyHiddenSinglesInColumns(board, candidates, snapshots)) changed = true;
+  if (applyHiddenSinglesInBoxes(board, candidates, snapshots)) changed = true;
   return changed;
 }
 
 /** Hidden Singles in rows */
-function applyHiddenSinglesInRows(board: number[][], candidates: Set<number>[][]): boolean {
+function applyHiddenSinglesInRows(
+  board: number[][],
+  candidates: Set<number>[][],
+  snapshots: SudokuSnapshot[]
+): boolean {
   let changed = false;
 
   for (let row = 0; row < BOARD_SIZE; row++) {
@@ -190,6 +224,13 @@ function applyHiddenSinglesInRows(board: number[][], candidates: Set<number>[][]
         const col = possibleCols[0];
         board[row][col] = digit;
         eliminateFromPeers(board, candidates, row, col, digit);
+        // Record a snapshot
+        snapshots.push({
+          board: deepCloneBoard(board),
+          candidates: deepCloneCandidates(candidates),
+          message: `Hidden Single in R${row}: R${row}C${col} = ${digit}`,
+          highlight: { rows: [row], blocks: [[row, col]] },
+        });
         changed = true;
       }
     }
@@ -199,7 +240,11 @@ function applyHiddenSinglesInRows(board: number[][], candidates: Set<number>[][]
 }
 
 /** Hidden Singles in columns (similar logic) */
-function applyHiddenSinglesInColumns(board: number[][], candidates: Set<number>[][]): boolean {
+function applyHiddenSinglesInColumns(
+  board: number[][],
+  candidates: Set<number>[][],
+  snapshots: SudokuSnapshot[]
+): boolean {
   let changed = false;
 
   for (let col = 0; col < BOARD_SIZE; col++) {
@@ -219,6 +264,13 @@ function applyHiddenSinglesInColumns(board: number[][], candidates: Set<number>[
         const row = possibleRows[0];
         board[row][col] = digit;
         eliminateFromPeers(board, candidates, row, col, digit);
+        // Record a snapshot
+        snapshots.push({
+          board: deepCloneBoard(board),
+          candidates: deepCloneCandidates(candidates),
+          message: `Hidden Single in C${col}: R${row}C${col} = ${digit}`,
+          highlight: { cols: [col], blocks: [[row, col]] },
+        });
         changed = true;
       }
     }
@@ -227,7 +279,11 @@ function applyHiddenSinglesInColumns(board: number[][], candidates: Set<number>[
 }
 
 /** Hidden Singles in boxes (similar logic) */
-function applyHiddenSinglesInBoxes(board: number[][], candidates: Set<number>[][]): boolean {
+function applyHiddenSinglesInBoxes(
+  board: number[][],
+  candidates: Set<number>[][],
+  snapshots: SudokuSnapshot[]
+): boolean {
   let changed = false;
 
   for (let boxRow = 0; boxRow < 3; boxRow++) {
@@ -253,6 +309,13 @@ function applyHiddenSinglesInBoxes(board: number[][], candidates: Set<number>[][
           const [r, c] = possibleCells[0];
           board[r][c] = digit;
           eliminateFromPeers(board, candidates, r, c, digit);
+          // Record a snapshot
+          snapshots.push({
+            board: deepCloneBoard(board),
+            candidates: deepCloneCandidates(candidates),
+            message: `Hidden Single in Box: R${r}C${c} = ${digit}`,
+            highlight: { boxes: [[boxRow, boxCol]], blocks: [[r, c]] },
+          });
           changed = true;
         }
       }
@@ -291,19 +354,23 @@ function isDigitInBox(board: number[][], boxRow: number, boxCol: number, digit: 
  * 2.3) NAKED PAIRS
  ***********************************************************/
 
-function applyNakedPairs(board: number[][], candidates: Set<number>[][]): boolean {
+function applyNakedPairs(
+  board: number[][],
+  candidates: Set<number>[][],
+  snapshots: SudokuSnapshot[]
+): boolean {
   let changed = false;
 
   // Apply in rows, columns, and boxes
   for (let r = 0; r < BOARD_SIZE; r++) {
-    if (applyNakedPairsInRow(board, candidates, r)) changed = true;
+    if (applyNakedPairsInRow(board, candidates, snapshots, r)) changed = true;
   }
   for (let c = 0; c < BOARD_SIZE; c++) {
-    if (applyNakedPairsInCol(board, candidates, c)) changed = true;
+    if (applyNakedPairsInCol(board, candidates, snapshots, c)) changed = true;
   }
   for (let br = 0; br < 3; br++) {
     for (let bc = 0; bc < 3; bc++) {
-      if (applyNakedPairsInBox(board, candidates, br, bc)) changed = true;
+      if (applyNakedPairsInBox(board, candidates, snapshots, br, bc)) changed = true;
     }
   }
 
@@ -314,6 +381,7 @@ function applyNakedPairs(board: number[][], candidates: Set<number>[][]): boolea
 function applyNakedPairsInRow(
   board: number[][],
   candidates: Set<number>[][],
+  snapshots: SudokuSnapshot[],
   row: number
 ): boolean {
   let changed = false;
@@ -338,14 +406,32 @@ function applyNakedPairsInRow(
       if (cands1.size === 2 && cands2.size === 2 && areSetsEqual(cands1, cands2)) {
         // Remove these candidates from all other cells in this row
         const pairValues = [...cands1];
+        const removedCandidates: number[][] = [];
         for (let c = 0; c < BOARD_SIZE; c++) {
           if (c !== col1 && c !== col2 && board[row][c] === 0) {
             for (const val of pairValues) {
               if (candidates[row][c].delete(val)) {
+                removedCandidates.push([row, c, val]);
                 changed = true;
               }
             }
           }
+        }
+        if (removedCandidates.length > 0) {
+          // Record a snapshot
+          snapshots.push({
+            board: deepCloneBoard(board),
+            candidates: deepCloneCandidates(candidates),
+            message: `Naked Pair in Row${row}: C${col1}C${col2} = {${[...cands1].join(', ')}}`,
+            highlight: {
+              rows: [row],
+              blocks: [
+                [row, col1],
+                [row, col2],
+              ],
+              removedCandidates,
+            },
+          });
         }
       }
     }
@@ -358,6 +444,7 @@ function applyNakedPairsInRow(
 function applyNakedPairsInCol(
   board: number[][],
   candidates: Set<number>[][],
+  snapshots: SudokuSnapshot[],
   col: number
 ): boolean {
   let changed = false;
@@ -381,15 +468,33 @@ function applyNakedPairsInCol(
       // If both cells have exactly 2 identical candidates => Naked Pair
       if (cands1.size === 2 && cands2.size === 2 && areSetsEqual(cands1, cands2)) {
         // Remove these candidates from all other cells in this column
+        const removedCandidates: number[][] = [];
         const pairValues = [...cands1];
         for (let r = 0; r < BOARD_SIZE; r++) {
           if (r !== row1 && r !== row2 && board[r][col] === 0) {
             for (const val of pairValues) {
               if (candidates[r][col].delete(val)) {
+                removedCandidates.push([r, col, val]);
                 changed = true;
               }
             }
           }
+        }
+        if (removedCandidates.length > 0) {
+          // Record a snapshot
+          snapshots.push({
+            board: deepCloneBoard(board),
+            candidates: deepCloneCandidates(candidates),
+            message: `Naked Pair in Col${col}: R${row1}R${row2} = {${[...cands1].join(', ')}}`,
+            highlight: {
+              cols: [col],
+              blocks: [
+                [row1, col],
+                [row2, col],
+              ],
+              removedCandidates,
+            },
+          });
         }
       }
     }
@@ -402,6 +507,7 @@ function applyNakedPairsInCol(
 function applyNakedPairsInBox(
   board: number[][],
   candidates: Set<number>[][],
+  snapshots: SudokuSnapshot[],
   boxRow: number,
   boxCol: number
 ): boolean {
@@ -430,6 +536,7 @@ function applyNakedPairsInBox(
       const cands1 = candidates[r1][c1];
       const cands2 = candidates[r2][c2];
 
+      const removedCandidates: number[][] = [];
       // If both cells have exactly 2 identical candidates => Naked Pair
       if (cands1.size === 2 && cands2.size === 2 && areSetsEqual(cands1, cands2)) {
         const pairValues = [...cands1];
@@ -439,10 +546,27 @@ function applyNakedPairsInBox(
             const [rr, cc] = cells[k];
             for (const val of pairValues) {
               if (candidates[rr][cc].delete(val)) {
+                removedCandidates.push([rr, cc, val]);
                 changed = true;
               }
             }
           }
+        }
+        if (removedCandidates.length > 0) {
+          // Record a snapshot
+          snapshots.push({
+            board: deepCloneBoard(board),
+            candidates: deepCloneCandidates(candidates),
+            message: `Naked Pair Box`,
+            highlight: {
+              boxes: [[boxRow, boxCol]],
+              blocks: [
+                [r1, c1],
+                [r2, c2],
+              ],
+              removedCandidates,
+            },
+          });
         }
       }
     }
