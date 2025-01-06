@@ -1,7 +1,7 @@
 import classNames from 'classnames';
 import { SudokuSnapshot } from '../utils/types';
 /** 9x9 Sudoku board; 0 = empty cells */
-type SudokuBoardProps = Omit<SudokuSnapshot, 'message'>;
+type SudokuBoardProps = Omit<SudokuSnapshot, 'kind' | 'variant' | 'difficulty'>;
 
 /**
  * A Sudoku board component in React using Tailwind CSS,
@@ -27,8 +27,8 @@ export function SudokuBoard({ board, candidates, highlight }: SudokuBoardProps) 
                     //   !isFilled && candidates[rowIndex][colIndex].size === 1,
                     'text-gray-600': !isFilled,
                     'bg-yellow-50':
-                      (!!highlight?.rows?.find((r) => rowIndex === r) ||
-                        !!highlight?.cols?.find((c) => colIndex === c) ||
+                      (highlight?.rows?.find((r) => rowIndex === r) != null ||
+                        highlight?.cols?.find((c) => colIndex === c) != null ||
                         !!highlight?.boxes?.find(
                           ([r, c]) =>
                             Math.floor(rowIndex / 3) === r && Math.floor(colIndex / 3) === c
@@ -49,6 +49,9 @@ export function SudokuBoard({ board, candidates, highlight }: SudokuBoardProps) 
                     {/* Instead of sorting the candidate digits,
                         we check each digit 1..9 in a fixed position. */}
                     {SUDOKU_CANDIDATES_ORDER.map((digit) => {
+                      const show = highlight?.candidates?.find(
+                        ([r, c, d]) => rowIndex === r && colIndex === c && d === digit
+                      );
                       const removed = highlight?.removedCandidates?.find(
                         ([r, c, d]) => rowIndex === r && colIndex === c && d === digit
                       );
@@ -57,6 +60,7 @@ export function SudokuBoard({ board, candidates, highlight }: SudokuBoardProps) 
                           key={digit}
                           className={classNames('flex items-center justify-center', {
                             'text-red-600 line-through': removed,
+                            'text-green-600 border border-green-600 rounded-full': show,
                           })}
                         >
                           {candidates[rowIndex][colIndex].has(digit) ? digit : removed?.[2] ?? ''}

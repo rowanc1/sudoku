@@ -1,37 +1,38 @@
-import { SudokuSnapshot } from './types';
-import { deepCloneBoard, deepCloneCandidates } from './utils';
+import { SolverOptions, Sudoku } from './types';
+import { addSnapshot } from './utils';
 
-export function applyNakedTriples(
-  board: number[][],
-  candidates: Set<number>[][],
-  snapshots: SudokuSnapshot[]
-): boolean {
-  let changed = false;
-
+export function applyNakedTriples(game: Sudoku, opts?: SolverOptions): boolean {
+  if (opts?.nakedTriples === false) return false;
   // Rows
-  for (let r = 0; r < 9; r++) {
-    if (applyNakedTriplesInRow(board, candidates, snapshots, r)) {
-      changed = true;
-    }
-  }
-
-  // Columns
-  for (let c = 0; c < 9; c++) {
-    if (applyNakedTriplesInColumn(board, candidates, snapshots, c)) {
-      changed = true;
-    }
-  }
-
-  // Boxes
-  for (let br = 0; br < 3; br++) {
-    for (let bc = 0; bc < 3; bc++) {
-      if (applyNakedTriplesInBox(board, candidates, snapshots, br, bc)) {
-        changed = true;
+  if (opts?.nakedTriplesRows !== false) {
+    for (let r = 0; r < 9; r++) {
+      if (applyNakedTriplesInRow(game, r)) {
+        return true;
       }
     }
   }
 
-  return changed;
+  // Columns
+  if (opts?.nakedTriplesCols !== false) {
+    for (let c = 0; c < 9; c++) {
+      if (applyNakedTriplesInColumn(game, c)) {
+        return true;
+      }
+    }
+  }
+
+  // Boxes
+  if (opts?.nakedTriplesBoxes !== false) {
+    for (let br = 0; br < 3; br++) {
+      for (let bc = 0; bc < 3; bc++) {
+        if (applyNakedTriplesInBox(game, br, bc)) {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
 }
 
 /**
@@ -42,18 +43,13 @@ export function applyNakedTriples(
  * @param row         The row index (0..8).
  * @returns `true` if at least one candidate was eliminated, otherwise `false`.
  */
-function applyNakedTriplesInRow(
-  board: number[][],
-  candidates: Set<number>[][],
-  snapshots: SudokuSnapshot[],
-  row: number
-): boolean {
+function applyNakedTriplesInRow(game: Sudoku, row: number): boolean {
   let changed = false;
 
   // 1) Collect columns of all empty cells in this row
   const emptyCols: number[] = [];
   for (let col = 0; col < 9; col++) {
-    if (board[row][col] === 0) {
+    if (game.board[row][col] === 0) {
       emptyCols.push(col);
     }
   }
@@ -66,9 +62,9 @@ function applyNakedTriplesInRow(
         const col2 = emptyCols[j];
         const col3 = emptyCols[k];
 
-        const cands1 = candidates[row][col1];
-        const cands2 = candidates[row][col2];
-        const cands3 = candidates[row][col3];
+        const cands1 = game.candidates[row][col1];
+        const cands2 = game.candidates[row][col2];
+        const cands3 = game.candidates[row][col3];
 
         // 3) Combine these three sets
         const union = new Set<number>([...cands1, ...cands2, ...cands3]);
@@ -88,9 +84,9 @@ function applyNakedTriplesInRow(
           const removedCandidates: number[][] = [];
           for (let c = 0; c < 9; c++) {
             // skip the triple cells themselves
-            if (c !== col1 && c !== col2 && c !== col3 && board[row][c] === 0) {
+            if (c !== col1 && c !== col2 && c !== col3 && game.board[row][c] === 0) {
               for (const val of tripleValues) {
-                if (candidates[row][c].delete(val)) {
+                if (game.candidates[row][c].delete(val)) {
                   removedCandidates.push([row, c, val]);
                   changed = true;
                 }
@@ -98,19 +94,21 @@ function applyNakedTriplesInRow(
             }
           }
           if (removedCandidates.length > 0) {
-            // Record a snapshot
-            snapshots.push({
-              board: deepCloneBoard(board),
-              candidates: deepCloneCandidates(candidates),
-              message: `Naked Triple in Row${row}: c${col1}c${col2}c${col3} = {${[...union].join(
-                ', '
-              )}}`,
+            addSnapshot(game, {
+              kind: 'Naked Triple',
+              variant: 'Row',
+              difficulty: 4,
               highlight: {
                 rows: [row],
                 blocks: [
                   [row, col1],
                   [row, col2],
                   [row, col3],
+                ],
+                candidates: [
+                  ...[...cands1].map((d) => [row, col1, d]),
+                  ...[...cands2].map((d) => [row, col2, d]),
+                  ...[...cands3].map((d) => [row, col3, d]),
                 ],
                 removedCandidates,
               },
@@ -140,18 +138,13 @@ function isSubset(setA: Set<number>, setB: Set<number>): boolean {
  * @param col         The column index (0..8).
  * @returns `true` if at least one candidate was eliminated, otherwise `false`.
  */
-function applyNakedTriplesInColumn(
-  board: number[][],
-  candidates: Set<number>[][],
-  snapshots: SudokuSnapshot[],
-  col: number
-): boolean {
+function applyNakedTriplesInColumn(game: Sudoku, col: number): boolean {
   let changed = false;
 
   // 1) Collect rows of all empty cells in this column
   const emptyRows: number[] = [];
   for (let row = 0; row < 9; row++) {
-    if (board[row][col] === 0) {
+    if (game.board[row][col] === 0) {
       emptyRows.push(row);
     }
   }
@@ -164,9 +157,9 @@ function applyNakedTriplesInColumn(
         const row2 = emptyRows[j];
         const row3 = emptyRows[k];
 
-        const cands1 = candidates[row1][col];
-        const cands2 = candidates[row2][col];
-        const cands3 = candidates[row3][col];
+        const cands1 = game.candidates[row1][col];
+        const cands2 = game.candidates[row2][col];
+        const cands3 = game.candidates[row3][col];
 
         // Combine these three sets
         const union = new Set<number>([...cands1, ...cands2, ...cands3]);
@@ -184,9 +177,9 @@ function applyNakedTriplesInColumn(
 
           // Eliminate those digits from all other empty cells in this column
           for (let r = 0; r < 9; r++) {
-            if (r !== row1 && r !== row2 && r !== row3 && board[r][col] === 0) {
+            if (r !== row1 && r !== row2 && r !== row3 && game.board[r][col] === 0) {
               for (const val of tripleValues) {
-                if (candidates[r][col].delete(val)) {
+                if (game.candidates[r][col].delete(val)) {
                   removedCandidates.push([r, col, val]);
                   changed = true;
                 }
@@ -194,19 +187,21 @@ function applyNakedTriplesInColumn(
             }
           }
           if (removedCandidates.length > 0) {
-            // Record a snapshot
-            snapshots.push({
-              board: deepCloneBoard(board),
-              candidates: deepCloneCandidates(candidates),
-              message: `Naked Triple in Col${col}: R${row1}R${row2}R${row3} = {${[...union].join(
-                ', '
-              )}}`,
+            addSnapshot(game, {
+              kind: 'Naked Triple',
+              variant: 'Column',
+              difficulty: 4,
               highlight: {
                 cols: [col],
                 blocks: [
                   [row1, col],
                   [row2, col],
                   [row3, col],
+                ],
+                candidates: [
+                  ...[...cands1].map((d) => [row1, col, d]),
+                  ...[...cands2].map((d) => [row2, col, d]),
+                  ...[...cands3].map((d) => [row3, col, d]),
                 ],
                 removedCandidates,
               },
@@ -229,13 +224,7 @@ function applyNakedTriplesInColumn(
  * @param boxCol       The col-index of the box (0..2).
  * @returns `true` if at least one candidate was eliminated, otherwise `false`.
  */
-function applyNakedTriplesInBox(
-  board: number[][],
-  candidates: Set<number>[][],
-  snapshots: SudokuSnapshot[],
-  boxRow: number,
-  boxCol: number
-): boolean {
+function applyNakedTriplesInBox(game: Sudoku, boxRow: number, boxCol: number): boolean {
   let changed = false;
 
   // Each box is 3x3 cells
@@ -248,7 +237,7 @@ function applyNakedTriplesInBox(
     for (let c = 0; c < 3; c++) {
       const rr = startRow + r;
       const cc = startCol + c;
-      if (board[rr][cc] === 0) {
+      if (game.board[rr][cc] === 0) {
         emptyCells.push([rr, cc]);
       }
     }
@@ -262,9 +251,9 @@ function applyNakedTriplesInBox(
         const [r2, c2] = emptyCells[j];
         const [r3, c3] = emptyCells[k];
 
-        const cands1 = candidates[r1][c1];
-        const cands2 = candidates[r2][c2];
-        const cands3 = candidates[r3][c3];
+        const cands1 = game.candidates[r1][c1];
+        const cands2 = game.candidates[r2][c2];
+        const cands3 = game.candidates[r3][c3];
 
         // Combine these sets
         const union = new Set<number>([...cands1, ...cands2, ...cands3]);
@@ -290,10 +279,10 @@ function applyNakedTriplesInBox(
                 (rr !== r1 || cc !== c1) &&
                 (rr !== r2 || cc !== c2) &&
                 (rr !== r3 || cc !== c3) &&
-                board[rr][cc] === 0
+                game.board[rr][cc] === 0
               ) {
                 for (const val of tripleValues) {
-                  if (candidates[rr][cc].delete(val)) {
+                  if (game.candidates[rr][cc].delete(val)) {
                     removedCandidates.push([rr, cc, val]);
                     changed = true;
                   }
@@ -303,19 +292,21 @@ function applyNakedTriplesInBox(
           }
 
           if (removedCandidates.length > 0) {
-            // Record a snapshot
-            snapshots.push({
-              board: deepCloneBoard(board),
-              candidates: deepCloneCandidates(candidates),
-              message: `Naked Triple in Box[${boxRow},${boxCol}]: R${r1}C${c1}, R${r2}C${c2}, R${r3}C${c3} = {${[
-                ...cands1,
-              ].join(', ')}}`,
+            addSnapshot(game, {
+              kind: 'Naked Triple',
+              variant: 'Box',
+              difficulty: 4,
               highlight: {
                 boxes: [[boxRow, boxCol]],
                 blocks: [
                   [r1, c1],
                   [r2, c2],
                   [r3, c3],
+                ],
+                candidates: [
+                  ...[...cands1].map((d) => [r1, c1, d]),
+                  ...[...cands2].map((d) => [r2, c2, d]),
+                  ...[...cands3].map((d) => [r3, c3, d]),
                 ],
                 removedCandidates,
               },

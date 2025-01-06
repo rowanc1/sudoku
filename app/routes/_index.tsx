@@ -1,8 +1,11 @@
 import type { MetaFunction } from '@remix-run/node';
 import { SudokuBoard } from '../components/Board';
 import { useState } from 'react';
-import { SudokuSnapshot } from '../utils/types';
+import { SolverOptions, SudokuSnapshot } from '../utils/types';
 import { solveSudoku } from '../utils/solve';
+import { BOARDS, DIABOLICAL, HARD, MEDIUM, RANDOM } from '../utils/boards';
+import classNames from 'classnames';
+import { SolverOptionsModal } from '../components/SolverOptions';
 
 export const meta: MetaFunction = () => {
   return [
@@ -12,11 +15,12 @@ export const meta: MetaFunction = () => {
 };
 
 type StepByStepSudokuViewerProps = {
-  initialBoard: number[][];
+  initialBoard: number[][] | string;
 };
 
 export function StepByStepSudokuViewer({ initialBoard }: StepByStepSudokuViewerProps) {
   // currentStep starts at 0 => the initial snapshot
+  const [options, setOptions] = useState<SolverOptions>({});
   const [currentStep, setCurrentStep] = useState(0);
   const [stepHistory, setStepHistory] = useState([] as SudokuSnapshot[]);
 
@@ -37,7 +41,8 @@ export function StepByStepSudokuViewer({ initialBoard }: StepByStepSudokuViewerP
   }
 
   function handleSolve() {
-    setStepHistory(solveSudoku(initialBoard));
+    const game = solveSudoku(initialBoard, options);
+    setStepHistory(game.snapshots);
   }
 
   function handlePrev() {
@@ -48,9 +53,20 @@ export function StepByStepSudokuViewer({ initialBoard }: StepByStepSudokuViewerP
 
   return (
     <div className="flex flex-col items-center gap-4">
-      <button className="rounded bg-gray-300 px-3 py-1 disabled:opacity-50" onClick={handleSolve}>
-        Solve
-      </button>
+      <div className="flex flex-row gap-2">
+        <button className="rounded bg-gray-300 px-3 py-1 disabled:opacity-50" onClick={handleSolve}>
+          Solve
+        </button>
+        <SolverOptionsModal
+          {...{
+            options,
+            setOptions,
+            onOpenChange: (open) => {
+              if (!open) handleSolve();
+            },
+          }}
+        />
+      </div>
       <div className="flex items-center gap-2">
         <button
           className="rounded bg-gray-300 px-3 py-1 disabled:opacity-50"
@@ -73,7 +89,32 @@ export function StepByStepSudokuViewer({ initialBoard }: StepByStepSudokuViewerP
 
       {currentSnapshot && (
         <>
-          <p className="italic text-gray-700">{currentSnapshot.message}</p>
+          <p className="italic text-gray-700">
+            {currentSnapshot.kind} - {currentSnapshot.variant}
+          </p>
+          <div className="flex flex-row">
+            {stepHistory.map(({ difficulty }, index) => (
+              <button
+                key={index}
+                className="w-2 h-10 relative"
+                onFocus={() => setCurrentStep(index)}
+                onMouseOver={() => setCurrentStep(index)}
+              >
+                <div
+                  className={classNames('w-full absolute bottom-0 border-r-[0.5px]', {
+                    'bg-gray-900': difficulty === 0,
+                    'bg-green-600': difficulty === 1,
+                    'bg-slate-500': difficulty === 2,
+                    'bg-blue-500': difficulty === 3,
+                    'bg-violet-500': difficulty === 4,
+                    'bg-orange-500': difficulty === 5,
+                    'bg-red-500': difficulty === 6,
+                  })}
+                  style={{ height: (difficulty + 1) * 4 }}
+                />
+              </button>
+            ))}
+          </div>
           {/* Render your Sudoku board visualization with candidates */}
           <SudokuBoard
             board={currentSnapshot.board}
@@ -87,67 +128,5 @@ export function StepByStepSudokuViewer({ initialBoard }: StepByStepSudokuViewerP
 }
 
 export default function Index() {
-  // const board: number[][] = [
-  //   [5, 3, 0, 0, 7, 0, 0, 0, 0],
-  //   [6, 0, 0, 1, 9, 5, 0, 0, 0],
-  //   [0, 9, 8, 0, 0, 0, 0, 6, 0],
-
-  //   [8, 0, 0, 0, 6, 0, 0, 0, 3],
-  //   [4, 0, 0, 8, 0, 3, 0, 0, 1],
-  //   [7, 0, 0, 0, 2, 0, 0, 0, 6],
-
-  //   [0, 6, 0, 0, 0, 0, 2, 8, 0],
-  //   [0, 0, 0, 4, 1, 9, 0, 0, 5],
-  //   [0, 0, 0, 0, 8, 0, 0, 7, 9],
-  // ];
-
-  // const board: number[][] = [
-  //   [0, 0, 0, 0, 6, 5, 0, 0, 0],
-  //   [0, 0, 0, 1, 0, 0, 0, 3, 0],
-  //   [0, 0, 5, 0, 0, 7, 6, 0, 2],
-  //   [0, 0, 0, 0, 8, 0, 3, 4, 0],
-  //   [0, 2, 6, 7, 0, 3, 0, 0, 0],
-  //   [7, 0, 0, 0, 0, 9, 2, 0, 0],
-  //   [8, 0, 0, 0, 0, 6, 0, 0, 0],
-  //   [0, 9, 0, 0, 0, 0, 0, 5, 1],
-  //   [5, 0, 0, 4, 0, 0, 9, 0, 0],
-  // ];
-
-  // Medium
-  // const board: number[][] = [
-  //   [0, 0, 0, 0, 6, 5, 0, 0, 0],
-  //   [0, 0, 0, 1, 0, 0, 0, 3, 0],
-  //   [0, 0, 5, 0, 0, 7, 6, 0, 2],
-  //   [0, 0, 0, 0, 8, 0, 3, 4, 0],
-  //   [0, 2, 6, 7, 0, 3, 0, 0, 0],
-  //   [7, 0, 0, 0, 0, 9, 2, 0, 0],
-  //   [8, 0, 0, 0, 0, 6, 0, 0, 0],
-  //   [0, 9, 0, 0, 0, 0, 0, 5, 1],
-  //   [5, 0, 0, 4, 0, 0, 9, 0, 0],
-  // ];
-
-  // Hard
-  const board: number[][] = [
-    [0, 2, 0, 0, 7, 0, 0, 0, 0],
-    [0, 0, 1, 0, 0, 0, 8, 4, 0],
-    [0, 0, 0, 5, 0, 0, 1, 0, 0],
-    [9, 0, 0, 0, 1, 0, 7, 6, 4],
-    [5, 0, 0, 0, 6, 0, 0, 0, 0],
-    [4, 0, 0, 0, 9, 0, 0, 3, 0],
-    [0, 0, 7, 9, 0, 0, 0, 0, 0],
-    [0, 3, 0, 4, 0, 0, 0, 5, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 8],
-  ];
-  return <StepByStepSudokuViewer initialBoard={board} />;
-
-  // // Build some trivial candidate sets:
-  // // For empty cells (0), use all digits 1..9 as a placeholder.
-  // // For filled cells, only that digit as its candidate.
-  // const candidates: Set<number>[][] = buildCandidates(board);
-  // return (
-  //   <div className="min-h-screen bg-gray-50 p-4">
-  //     <h1 className="mb-4 text-center text-2xl font-bold">Sudoku Visualization</h1>
-  //     <SudokuBoard board={board} candidates={candidates} />
-  //   </div>
-  // );
+  return <StepByStepSudokuViewer initialBoard={HARD[12]} />;
 }
